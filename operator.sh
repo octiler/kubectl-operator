@@ -134,16 +134,15 @@ EOF
 fi
 
 EVALFLAG="TRUE"
-kubectlCommand="echo '
-$Redacted
-' \
+kubectlCommand="cat << 'EOF' \
 | kubectl revisor ${CLASSIFIED:+--classified} ${MOCK} \
 | kubectl \
 --kubeconfig ${map[kubeconfig]} \
 --context ${map[world]} \
 ${COMMAND} ${SUBCOMMAND} \
 $@ ${OPTIONS[@]} \
--f - \
-"
+-f -
+${Redacted}
+EOF"
 
 [[ "TRUE" == "$DRYRUN" ]] && echo "${kubectlCommand}" || ( [[ $EVALFLAG == "TRUE" ]] && eval "${kubectlCommand}" || ${kubectlCommand} )
