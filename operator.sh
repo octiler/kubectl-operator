@@ -12,9 +12,9 @@ yq -V | grep -q mikefarah || err please install yq utilities
 
 function usage () {
 cat << EOF
-maintain kubernetes resources within git repository in standard procedure
+maintain kubernetes resources within git repository owned by devops in standard procedure
 
-kubectl operator COMMAND [-f REFERRENCE ][--dry-run ][--classified ][--mock ][FLAGS ...][-- ][FLAGS ...]
+kubectl operator COMMAND [-f REFERENCE ][--dry-run ][--classified ][--mock ][FLAGS ... ][-- ][FLAGS ...]
 EOF
 }
 
@@ -66,7 +66,7 @@ SUBCOMMAND="$1" && [[ "${SUBCOMMAND}" == "${1#-}" ]] && shift || SUBCOMMAND=""
 
 [[ "$ref" == "-" ]] && ref="" || true
 [[ ${#ref} -gt 0 ]] && ( [[ -f "$ref" ]] || err 110 yaml file "$ref" not exist )
-[[ ${#ref} -gt 0 ]] && Redacted=`cat < "$ref"` || Redacted=`cat`
+[[ ${#ref} -gt 0 ]] && Redacted=`cat < $ref` || Redacted=`cat`
 
 readonly cubeconfig=`realpath ~/.kube/config`
 declare -A map=(
@@ -74,26 +74,26 @@ declare -A map=(
     [kubeconfig]="$cubeconfig"
 )
 
-# kubectl api-resources --no-headers | ObjectKind="" awk '$NF==ENVIRON["ObjectKind"] && $(NF-1)=="true" {print $1,$(NF-2),$NF}'
-# kubectl api-resources --no-headers | awk -vObjectKind="" '$NF==ObjectKind && $(NF-1)=="true" {print $1,$(NF-2),$NF}'
+# kubectl api-resources --no-headers | ObjectKind="" awk '$NF==ENVIRON["ObjectKind"] && $(NF-1)=="true" {print $1,$(NF-2),$(NF)}'
+# kubectl api-resources --no-headers | awk -vObjectKind="" '$NF==ObjectKind && $(NF-1)=="true" {print $1,$(NF-2),$(NF)}'
 
 function resource_examiner () {
     local NamespacedKinds=`kubectl --kubeconfig="${map[kubeconfig]}" --context="${map[world]}" api-resources --no-headers --namespaced | awk '{print $NF}'`
-    IncompletedResources=`echo "$Redacted" | NamespacedKinds="$NamespacedKinds" \
-        yq 'select(. as $item | "$NamespacedKinds" | envsubst | split("\n") | any_c(. == $item.kind and ($item.metadata|has("namespace")|not)))'`
-    [[ "${#IncompletedResources}" -gt 0 ]] && err Please specify namespace for IncompletedResources: "
-$IncompletedResource" || true
+    IncompleteResources=`echo "$Redacted" | NamespacedKinds="$NamespacedKinds" \
+        yq 'select(. as $item |"$NamespacedKinds"|envsubst|split("\n")|any_c(. == $item.kind and ($item.metadata|has("namespace")|not)))'`
+    [[ "${#IncompleteResources}" -gt 0 ]] && err Please specify namespace for IncompleteResources: "
+$IncompleteResources" || true
 
     # local -a KindSets=()
     # for kind in `echo "$Redacted" | yq '[.kind]|unique[]'`;do
-    #     [[ `yq -n '"$kind" | envsubst as $kind | "$NamespacedKinds" | split(" ") | map(. == $kind) | any'` == "true" ]] && KindSets+=("$kind") || true
+    #     [[ `yq -n '"$kind" | envsubst as $kind | "$NamespacedKinds" | split(" ") | map(. == $kind) |any'` == "true" ]] && KindSets+=("$kind") || true
     # done
 }
 
 function locate_kubeconfig () {
-    yq '.contexts[].name' "${map[kubeconfig]}" | grep -q "^$1\$" && map[world]=$1 && return 0
+    yq '.contexts[].name' ${map[kubeconfig]} | grep -q "^$1\$" && map[world]=$1 && return 0
     map[kubeconfig]=~/.kube/$1.yaml
-    map[world]=`yq '.current-context' "${map[kubeconfig]}"`
+    map[world]=`yq '.current-context' ${map[kubeconfig]}`
     # fail early
 }
 
@@ -106,7 +106,7 @@ function guess () {
     [[ "$domain" == "${map[domain]}" ]] || err 111 not in domain ${map[domain]}
     local worldProject=${domainProject#${domain}/}
     local world=${worldProject%%/*}
-    local -A worldMap=([lab]=lab [demo]=lab)
+    local -A worldMap=([moon]=moon-res [saturn]=saturn-res)
     [[ ${#world} -gt 0 ]] && [[ ${#worldMap[$world]} -gt 0 ]] && world=${worldMap[$world]} || true
     locate_kubeconfig $world
 }
@@ -116,7 +116,7 @@ resource_examiner
 
 if [[ "$DRYRUN" == "TRUE" ]];then
 cat << EOF >&2
-----------------------------------------------------------------
+------------------------------------------------------------
 PWD:            `pwd`
 DEVOPS_ROOT:    ${DEVOPS_ROOTPATH}
 domain:         ${map[domain]}
@@ -126,23 +126,22 @@ workdir:        `git rev-parse --show-prefix`
 kubeconfig:     ${map[kubeconfig]}
 kube-context:   ${map[world]}
 command:        ${COMMAND}
-subcommand:     ${SUBCOMMAND}
+SUBCOMMAND:     ${SUBCOMMAND}
 PASSTHRU:       $@
 OPTIONS:        ${OPTIONS[@]}
-================================================================
+============================================================
 EOF
 fi
 
 EVALFLAG="TRUE"
-kubectlCommand="cat << 'EOF' \
-| kubectl revisor ${CLASSIFIED:+--classified} ${MOCK} \
+kubectlCommand="cat << 'EOF' | kubectl revisor ${CLASSIFIED:+--classified} ${MOCK} \
 | kubectl \
 --kubeconfig ${map[kubeconfig]} \
 --context ${map[world]} \
-${COMMAND} ${SUBCOMMAND} \
+$COMMAND $SUBCOMMAND \
 $@ ${OPTIONS[@]} \
 -f -
-${Redacted}
+$Redacted
 EOF"
 
 [[ "TRUE" == "$DRYRUN" ]] && echo "${kubectlCommand}" || ( [[ $EVALFLAG == "TRUE" ]] && eval "${kubectlCommand}" || ${kubectlCommand} )
