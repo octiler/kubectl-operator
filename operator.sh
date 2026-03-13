@@ -133,6 +133,33 @@ OPTIONS:        ${OPTIONS[@]}
 EOF
 fi
 
+case $COMMAND in
+    "diff")
+        RevisedResources=`echo "$Redacted" | kubectl revisor ${CLASSIFIED:+--classified} ${MOCK}`
+        for documentIndex in `echo "$RevisedResources" | yq 'document_index'`; do
+            echo ">>>>> documentIndex: $documentIndex <<<<<"
+            document=`echo "$RevisedResources" | documentIndex=$documentIndex yq 'select(document_index==("$documentIndex"|envsubst))'|yq 'sort_by(key|downcase)'`
+            remoteKind=`echo "$document" | yq '.kind // ""'`
+            remoteNamespace=`echo "$document" | yq '.metadata.namespace // ""'`
+            remoteName=`echo "$document" | yq '.metadata.name // ""'`
+            [[ -z "$remoteKind" ]] && [[ -z "$remoteName" ]] && err "not valid <Kind:$remoteKind><Namespace:$remoteNamespace><Name:$remoteName>"
+            remoteDocument=`kubectl \
+                --kubeconfig ${map[kubeconfig]} \
+                --context ${map[world]} \
+                ${remoteNamespace:+--namespace} ${remoteNamespace} \
+                get \
+                ${remoteKind} \
+                ${remoteName} \
+                -o yaml \
+                |yq 'sort_by(key|downcase)'`
+            echo "$remoteDocument" | diff - <(echo "$document") || true
+        done
+        exit 0
+        ;;
+    *)
+        ;;
+esac
+
 EVALFLAG="TRUE"
 kubectlCommand="cat << 'EOF' | kubectl revisor ${CLASSIFIED:+--classified} ${MOCK} \
 | kubectl \
